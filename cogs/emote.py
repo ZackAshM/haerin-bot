@@ -36,6 +36,7 @@ class Emote(commands.Cog):
         - **Adding/Removing/Sourcing**
         `{prefix}emote add` - Adds emotes based on the linked or uploaded images
         `{prefix}emote remove` - Removes given emotes
+        `{prefix}emote rename` - Rename an existng emote
         `{prefix}emote source` - Post the source images of the emotes given
 
         - **Emote Logging**
@@ -249,6 +250,33 @@ class Emote(commands.Cog):
 
 
     @emote.command(
+            name='rename',
+            brief='rename an existing emote'
+    )
+    @commands.has_permissions(manage_expressions=True)
+    async def emote_rename(self, ctx, emote : discord.Emoji, newName : str = ''):
+        """
+        Command: **emote rename**
+
+        Rename an existing emote.
+
+        __Usage:__
+        `{prefix}emote rename <:emote:> <new name>`
+
+        Permissions:
+        manage_expressions
+        """
+
+        if len(newName) < 2:
+            raise ValueError('A new name must be given with at least 2 characters length.')
+        
+        oldName = emote.name
+        await emote.edit(name=newName)
+
+        await ctx.send(f'Emote `{oldName}` successfully renamed to `{newName}`')
+
+
+    @emote.command(
         name='source',
         brief='return emote source'
     )
@@ -302,8 +330,12 @@ class Emote(commands.Cog):
         ↳ Set a channel to log emote sources when `{prefix}emote add` is used
         `{prefix}emote log update`
         ↳ Immediately post the current emote log update
+        `{prefix}emote log check`
+        ↳ See the awaiting update
         `{prefix}emote log disable`
         ↳ Disable posting emote log updates
+        `{prefix}emote log clear`
+        ↳ Clear the awaiting emote log
 
         Permissions:
         manage_expressions
@@ -484,6 +516,53 @@ class Emote(commands.Cog):
 
 
     @emotelog.command(
+            name='check',
+            brief='see awaiting update'
+    )
+    @commands.has_permissions(manage_expressions=True, create_expressions=True, manage_messages=True)
+    async def emotelog_check(self, ctx):
+        """
+        Command: **emote log check**
+
+        See the current awaiting log update. Posts in this channel.
+
+        __Usage:__
+        `{prefix}emote log check`
+
+        Permissions:
+        manage_expressions
+        create_expressions
+        manage_messages
+        """
+
+        updateMsg, updateMsgStick = await db_execute(self.db, 'SELECT updateMessage, updateMessageStickers FROM emotelog WHERE guildID=?', ctx.guild.id)
+
+        if (updateMsg == '') and (updateMsgStick == ''):
+            await ctx.send('There is currently no awaiting log update')
+            return
+        
+        if updateMsg:
+            hdr = f'**Added:**'
+            await ctx.send(hdr)
+            await ctx.send(updateMsg)
+
+        # handle stickers
+        if updateMsgStick:
+            stickers = []
+            stickerCount = 0
+            for stickerID in updateMsgStick.split(' '):
+                sticker = self.bot.get_sticker(int(stickerID))
+                stickers.append(sticker)
+                stickerCount += 1
+                if stickerCount >= 3:
+                    await ctx.send(stickers=stickers)
+                    stickers = []
+                    stickerCount = 0
+            if stickers:
+                await ctx.send(stickers=stickers)
+
+
+    @emotelog.command(
         name='disable',
         brief='disable emote logging'
     )
@@ -512,6 +591,31 @@ class Emote(commands.Cog):
             await ctx.send(f"Emote logging has been disabled. To re-enable, use `{prefix}emote log <#channel>`")
         else:
             await ctx.send("Emote logging is already disabled")
+
+
+    @emotelog.command(
+        name='clear',
+        brief='clear the awaiting log update'
+    )
+    @commands.has_permissions(manage_expressions=True, create_expressions=True, manage_channels=True, manage_messages=True)
+    async def emotelog_clear(self, ctx):
+        """
+        Command: **emote log clear**
+
+        Clear the awaiting log update.
+
+        __Usage:__
+        `{prefix}emote log clear
+
+        Permissions:
+        manage_expressions
+        create_expressions
+        manage_channels
+        manage_messages
+        """
+
+        self._reset(ctx.guild.id)
+        await ctx.send('The update log has been cleared')
 
 
     async def _reset(self, guild_id):
@@ -916,6 +1020,7 @@ class Emote(commands.Cog):
     async def _display_update(self, guild):
         """Update the display"""
 
+        await asyncio.sleep(5)
         disChID, msgCount = await db_execute(self.db, 'SELECT displayChannelID, messageCount FROM emotedisplay WHERE guildID=?', guild.id)
 
         if disChID:
