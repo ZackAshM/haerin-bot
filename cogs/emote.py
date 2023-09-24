@@ -614,7 +614,7 @@ class Emote(commands.Cog):
         manage_messages
         """
 
-        self._reset(ctx.guild.id)
+        await self._reset(ctx.guild.id)
         await ctx.send('The update log has been cleared')
 
 
